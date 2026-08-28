@@ -31,6 +31,30 @@ sitting behind `auth:sanctum` at `POST /api/v1/broadcasting/auth`, and pointed
 
 **Nothing else to configure** — this is a code fix, not an env/config change.
 
+### 1b. Follow-up: 419 CSRF mismatch on `/broadcasting/auth`
+
+After the fix above, subscribing still failed — this time with `419 CSRF
+token mismatch`. Cause: your dashboard origin (`localhost:5173`) is in
+`SANCTUM_STATEFUL_DOMAINS`, so Sanctum's `EnsureFrontendRequestsAreStateful`
+middleware requires the session cookie + CSRF token on every `/api/*`
+request from that origin — which is how your login/reply/claim calls
+already work. Pusher-js's own built-in auth request doesn't know about
+that cookie/header the way our `api` axios instance does, so it never had
+a chance.
+
+**Fix:**
+- `dashboard/src/services/echo.js` now authorizes channels through a custom
+  `authorizer` that calls `/v1/broadcasting/auth` via the same `api` axios
+  instance every other (working) request uses — cookies + CSRF header get
+  attached automatically, same as `/v1/me` or `/v1/chats/{id}/reply`.
+- `bootstrap/app.php` exempts `api/v1/broadcasting/auth` and
+  `api/v1/widget/broadcasting/auth` from CSRF verification outright, since
+  neither endpoint's own security depends on the CSRF token (one checks the
+  Sanctum session guard inside the controller, the other a signed
+  `site_key`) — this also fixes a latent version of the same issue for the
+  widget when testing it on `localhost`/`127.0.0.1`, which are also in the
+  stateful domains list.
+
 ## 2. Document / image upload
 
 New migration adds `attachment_path/name/mime/size` to `chat_messages`.
