@@ -39,6 +39,19 @@ class User extends Authenticatable
         return $this->belongsToMany(Site::class, 'site_user')->withTimestamps();
     }
 
+    /**
+     * Points the reset link at the Vue dashboard's /reset-password route
+     * (with a query string) instead of Laravel's default Blade-route URL,
+     * since there is no server-rendered "password.reset" route here.
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $frontendUrl = rtrim(config('app.frontend_url'), '/');
+        $url = $frontendUrl.'/reset-password?token='.$token.'&email='.urlencode($this->email);
+
+        $this->notify(new \App\Notifications\ResetPasswordNotification($url));
+    }
+
     public function assignedChatSessions(): HasMany
     {
         return $this->hasMany(ChatSession::class, 'assigned_agent_id');

@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\V1\AgentBroadcastAuthController;
 use App\Http\Controllers\Api\V1\AgentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ChatSessionController;
+use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\PasswordResetController;
 use App\Http\Controllers\Api\V1\SiteController;
 use App\Http\Controllers\Api\V1\Widget\WidgetBroadcastAuthController;
 use App\Http\Controllers\Api\V1\Widget\WidgetConfigController;
@@ -25,18 +27,22 @@ Route::prefix('v1')->group(function () {
 
     // ── Auth ──
     Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/forgot-password', [PasswordResetController::class, 'forgotPassword']);
+    Route::post('/auth/reset-password', [PasswordResetController::class, 'reset']);
 
     // ── Protected: agent dashboard (Sanctum) ──
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
         Route::put('/me', [AuthController::class, 'updateProfile']);
-        Route::put('/me/password', [AuthController::class, 'updatePassword']);
+        Route::post('/me/change-password', [AuthController::class, 'changePassword']);
+        Route::get('/me/unread', [NotificationController::class, 'unread']);
         Route::post('/broadcasting/auth', [AgentBroadcastAuthController::class, 'authorizeChannel']);
 
         Route::apiResource('sites', SiteController::class)->except(['show'])->parameters(['sites' => 'site']);
         Route::get('/sites/{site}', [SiteController::class, 'show']);
         Route::get('/sites/{site}/chats', [ChatSessionController::class, 'indexForSite']);
+        Route::get('/sites/{site}/agents', [AgentController::class, 'forSite']);
 
         Route::get('/chats/{chat}', [ChatSessionController::class, 'show']);
         Route::post('/chats/{chat}/reply', [ChatSessionController::class, 'reply']);

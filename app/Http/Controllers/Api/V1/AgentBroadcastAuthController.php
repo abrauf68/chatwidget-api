@@ -11,17 +11,6 @@ use Pusher\Pusher;
 
 class AgentBroadcastAuthController extends Controller
 {
-    /**
-     * Laravel's automatic `/broadcasting/auth` route (registered by passing
-     * `channels:` to withRouting()) runs on the **web** middleware group —
-     * it authenticates via the session cookie, not a Sanctum bearer token.
-     * The dashboard is a pure token client (see AuthController::login's
-     * docblock), so that route never sees it as logged in and every
-     * private-channel subscription silently fails auth, which is why
-     * realtime updates don't arrive. This endpoint does the same job but
-     * sits behind `auth:sanctum`, so it works with the same bearer token
-     * every other dashboard request already uses.
-     */
     public function authorizeChannel(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -44,12 +33,6 @@ class AgentBroadcastAuthController extends Controller
         return response()->json(json_decode($auth, true));
     }
 
-    /**
-     * Mirrors the authorization rules in routes/channels.php — kept as a
-     * single source of truth would be nicer, but channels.php callbacks
-     * are wired to the guard-based resolver we're deliberately bypassing,
-     * so the three patterns are re-checked directly against $user here.
-     */
     protected function userCanAccessChannel($user, string $channelName): bool
     {
         if (preg_match('/^private-site\.(\d+)\.queue$/', $channelName, $m)) {
@@ -65,7 +48,7 @@ class AgentBroadcastAuthController extends Controller
                 return false;
             }
 
-            return $user->isSuperAdmin() || $session->assigned_agent_id === $user->id;
+            return $user->isSuperAdmin() || $user->sites()->where('sites.id', $session->site_id)->exists();
         }
 
         if (preg_match('/^private-agent\.(\d+)\.notifications$/', $channelName, $m)) {

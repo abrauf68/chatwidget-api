@@ -56,6 +56,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend (dashboard SPA) URL
+    |--------------------------------------------------------------------------
+    |
+    | Used to build links that must point at the Vue dashboard rather than
+    | this API — e.g. the password reset email link.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

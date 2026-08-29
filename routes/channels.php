@@ -36,7 +36,13 @@ Broadcast::channel('chat.session.{token}', function (User $user, string $token) 
         return true;
     }
 
-    return $session->assigned_agent_id === $user->id;
+    // Matches ChatSessionPolicy::view() — any agent with access to the
+    // session's site can watch it live, not just whoever it's assigned to.
+    // Chats sit unclaimed in the queue for a while, and an agent opening
+    // one to read it (before hitting "Claim") still needs the private
+    // channel to authorize, or every message sent while it's unassigned
+    // silently never reaches their screen (a 403 on /broadcasting/auth).
+    return $user->sites()->where('sites.id', $session->site_id)->exists();
 });
 
 Broadcast::channel('agent.{agentId}.notifications', function (User $user, int $agentId) {

@@ -30,13 +30,24 @@ class ChatSessionController extends Controller
         $this->authorize('view', $site);
 
         $query = $site->chatSessions()
-            ->with(['assignedAgent', 'messages' => fn ($q) => $q->latest()->limit(1)])
-            // Real unread count (not just "is the single latest message
-            // unread") — used for the sidebar badge and per-row indicator.
+            // True unread total (not just whatever the latest-message-only
+            // eager load below would give us) — ChatSessionResource prefers
+            // this attribute when it's present.
             ->withCount(['messages as unread_count' => function ($q) {
                 $q->where('sender_type', 'visitor')->where('is_read', false);
             }])
+            ->with(['assignedAgent', 'messages' => fn ($q) => $q->latest()->limit(1)])
             ->orderByDesc('last_message_at');
+
+        // A claimed chat belongs to exactly one agent — once it's assigned,
+        // nobody else on the site sees it in their inbox at all (matches
+        // ChatSessionPolicy::view). Unclaimed chats stay visible to
+        // everyone so the team can pick them up. Admins see everything.
+        if (! $request->user()->isSuperAdmin()) {
+            $query->where(function ($q) use ($request) {
+                $q->whereNull('assigned_agent_id')->orWhere('assigned_agent_id', $request->user()->id);
+            });
+        }
 
         if ($status = $request->query('status')) {
             $query->where('status', $status);
@@ -58,24 +69,26 @@ class ChatSessionController extends Controller
     {
         $this->authorize('view', $chat);
 
-        // Opening a conversation is what "reading" it means here — clear
-        // its unread count so the sidebar/list badges reflect reality.
-        $chat->messages()
-            ->where('sender_type', 'visitor')
-            ->where('is_read', false)
-            ->update(['is_read' => true]);
+        // Opening a conversation is how an agent "reads" it — flip any
+        // unread visitor messages over so the unread badges (list item +
+        // sidebar) clear immediately for this session.
+        $chat->messages()->where('sender_type', 'visitor')->where('is_read', false)->update(['is_read' => true]);
 
         $chat->load(['site', 'assignedAgent', 'messages.sender']);
 
         return response()->json(['data' => new ChatSessionResource($chat)]);
     }
 
-    public function reply(ReplyToChatRequest $request, ChatSession $chat, SendMessage $action, ClaimChatSession $claim): JsonResponse
-    {
-        // Replying to an unclaimed chat *is* how an agent claims it —
-        // no separate "Claim" click needed. ChatSessionPolicy::reply
-        // already guarantees the chat is either unassigned or already
-        // this agent's, so this is a no-op once it's already claimed.
+    public function reply(
+        ReplyToChatRequest $request,
+        ChatSession $chat,
+        SendMessage $action,
+        ClaimChatSession $claim,
+    ): JsonResponse {
+        // First reply from any agent silently claims an unassigned chat —
+        // no separate "Claim" click required (see architecture doc 13.2 for
+        // why the DB-level whereNull() claim is still used underneath, so
+        // this stays race-safe if two agents reply at the same instant).
         if (! $chat->isAssigned()) {
             $claim->handle($chat, $request->user());
         }

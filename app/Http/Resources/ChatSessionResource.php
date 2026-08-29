@@ -19,6 +19,9 @@ class ChatSessionResource extends JsonResource
             'assigned_agent' => new UserResource($this->whenLoaded('assignedAgent')),
             'status' => $this->status,
             'source_page_url' => $this->source_page_url,
+            // Prefer the aggregate count from withCount('unread_count') when
+            // it was loaded — it reflects every unread message, not just
+            // whatever subset of `messages` happens to be eager loaded.
             'unread_count' => $this->when(
                 ! is_null($this->unread_count) || $this->relationLoaded('messages'),
                 fn () => $this->unread_count ?? $this->messages->where('sender_type', 'visitor')->where('is_read', false)->count()

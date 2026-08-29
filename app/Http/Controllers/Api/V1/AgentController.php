@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Chat\StoreAgentRequest;
 use App\Http\Requests\Chat\UpdateAgentSitesRequest;
 use App\Http\Resources\UserResource;
+use App\Models\Site;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,20 +14,42 @@ use Illuminate\Support\Facades\Hash;
 
 class AgentController extends Controller
 {
+    /**
+     * Lightweight, site-scoped agent list used to populate pickers like
+     * the "transfer chat" dropdown. Unlike index() below, this does NOT
+     * require `agents.manage`: any agent who can see the site (same rule
+     * as the site itself) can see who else works that site, so they can
+     * hand a conversation off to them.
+     */
+    public function forSite(Request $request, Site $site): JsonResponse
+    {
+        $this->authorize('view', $site);
+
+        // Site-pivot agents plus super admins (who can access every site,
+        // and so are always valid transfer targets even without a pivot row).
+        $agents = User::query()
+            ->where('id', '!=', $request->user()->id)
+            ->where('status', 'active')
+            ->where(function ($q) use ($site) {
+                $q->whereHas('sites', fn ($sq) => $sq->where('sites.id', $site->id))
+                    ->orWhereHas('roles', fn ($rq) => $rq->where('name', 'super_admin'));
+            })
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => UserResource::collection($agents)->collection,
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('agents.manage', User::class);
 
-        $query = User::query()->with(['roles', 'sites'])->orderBy('name');
-
-        // Used by the dashboard's "Transfer chat" picker to only list
-        // agents who actually have access to the chat's site.
-        if ($siteId = $request->query('site_id')) {
-            $query->whereHas('sites', fn ($q) => $q->where('sites.id', $siteId))
-                ->orWhereHas('roles', fn ($q) => $q->where('name', 'super_admin'));
-        }
-
-        $agents = $query->paginate($request->integer('per_page', 50));
+        $agents = User::query()
+            ->with(['roles', 'sites'])
+            ->orderBy('name')
+            ->paginate($request->integer('per_page', 20));
 
         return response()->json([
             'data' => UserResource::collection($agents)->collection,
