@@ -30,6 +30,8 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
+        Route::put('/me', [AuthController::class, 'updateProfile']);
+        Route::put('/me/password', [AuthController::class, 'updatePassword']);
         Route::post('/broadcasting/auth', [AgentBroadcastAuthController::class, 'authorizeChannel']);
 
         Route::apiResource('sites', SiteController::class)->except(['show'])->parameters(['sites' => 'site']);

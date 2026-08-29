@@ -17,10 +17,16 @@ class AgentController extends Controller
     {
         $this->authorize('agents.manage', User::class);
 
-        $agents = User::query()
-            ->with(['roles', 'sites'])
-            ->orderBy('name')
-            ->paginate($request->integer('per_page', 20));
+        $query = User::query()->with(['roles', 'sites'])->orderBy('name');
+
+        // Used by the dashboard's "Transfer chat" picker to only list
+        // agents who actually have access to the chat's site.
+        if ($siteId = $request->query('site_id')) {
+            $query->whereHas('sites', fn ($q) => $q->where('sites.id', $siteId))
+                ->orWhereHas('roles', fn ($q) => $q->where('name', 'super_admin'));
+        }
+
+        $agents = $query->paginate($request->integer('per_page', 50));
 
         return response()->json([
             'data' => UserResource::collection($agents)->collection,

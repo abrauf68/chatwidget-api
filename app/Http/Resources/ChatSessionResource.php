@@ -20,8 +20,8 @@ class ChatSessionResource extends JsonResource
             'status' => $this->status,
             'source_page_url' => $this->source_page_url,
             'unread_count' => $this->when(
-                $this->relationLoaded('messages'),
-                fn () => $this->messages->where('sender_type', 'visitor')->where('is_read', false)->count()
+                ! is_null($this->unread_count) || $this->relationLoaded('messages'),
+                fn () => $this->unread_count ?? $this->messages->where('sender_type', 'visitor')->where('is_read', false)->count()
             ),
             'last_message' => $this->when(
                 $this->relationLoaded('messages') && $this->messages->isNotEmpty(),

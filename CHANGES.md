@@ -102,3 +102,88 @@ later without updating this file too.
 - `config/cors.php`: `allowed_origins` opened to `*` (already applied
   earlier for the widget's cross-origin requests; noting it here since it's
   load-bearing for the attachment upload to work from a client's own site).
+
+## 6. Auto-claim on first reply
+
+Replying to an unassigned chat now claims it automatically — no separate
+"Claim" click needed. `ChatSessionController::reply` and `::uploadAttachment`
+both claim the session first if it's unassigned. `ChatSessionPolicy::reply`
+was tightened to match: an agent can reply while a chat is unclaimed or
+already theirs, but not to a chat another agent already owns (transfer it
+instead). The "Claim" button in the Inbox still exists for reserving a chat
+*without* sending a message yet.
+
+## 7. Chat transfer UI
+
+`dashboard/src/components/TransferPicker.vue` — a small popover in the
+conversation header (visible once a chat is claimed) listing other agents
+with access to that site (`GET /v1/agents?site_id=`), calling the existing
+`POST /chats/{chat}/transfer` endpoint. `ChatSessionPolicy::transfer` now
+also allows super admins to transfer any chat, not just the assigned agent.
+
+## 8. Agent → site assignment UI
+
+`Agents.vue` now has an "Edit sites" action per agent row that opens an
+inline checklist and saves via the existing
+`PUT /agents/{agent}/sites` endpoint. Previously site access could only be
+set once, at creation.
+
+## 9. Unread badge
+
+- Backend: `indexForSite` now computes a real `unread_count` per session via
+  `withCount` (previously it only checked the single latest loaded message,
+  which was wrong for anything but a 1-message conversation). Opening a
+  chat (`GET /chats/{chat}`) marks its visitor messages read server-side.
+- Frontend: `chats.totalUnread` sums unread counts for the active site;
+  the Inbox sidebar link shows a red badge with that number. New chats
+  from the realtime queue channel start with `unread_count: 1`; opening a
+  chat zeroes it locally to match the server.
+- This only tracks the currently-open site in the Inbox, not every site at
+  once — a true cross-site total would need a dedicated summary endpoint,
+  which felt like more than this round needed.
+
+## 10. Settings page + basic account management
+
+`Settings.vue` — update display name/email (`PUT /v1/me`, new
+`UpdateProfileRequest`), change password (`PUT /v1/me/password`, new
+`UpdatePasswordRequest`, requires the current password), theme toggle, and
+a logout button (mobile hides the sidebar's logout button, so it needed a
+second home).
+
+## 11. Notifications bell
+
+`dashboard/src/stores/notifications.js` + `NotificationsBell.vue` — on app
+load, subscribes to every accessible site's `site.{id}.queue` channel (not
+just whichever site is open in the Inbox) plus the agent's own
+`agent.{id}.notifications` channel, and shows a bell with an unseen-count
+badge in the sidebar. This is in-memory only (resets on refresh) — no
+backend persistence was added for it.
+
+## 12. Mobile responsiveness
+
+- Sidebar becomes a bottom icon bar under 760px.
+- Inbox becomes two sliding full-width panels (list, then conversation)
+  with a back button, instead of a fixed two-pane layout that would be too
+  cramped on a phone.
+- Sites, Agents, and Settings already used auto-fill grids / stacked cards
+  that collapse naturally; `Agents.vue` was also changed from a table to
+  card rows, which incidentally made it mobile-friendly too.
+- `.page` padding tightens, and the login card caps at `90vw` so it doesn't
+  overflow on narrow screens.
+
+## Widget: attachments not showing / no attach button
+
+This wasn't a code bug — the attach button and attachment rendering were
+added to `widget/src/components/Composer.vue` and `MessageList.vue` in the
+previous round, but the live `widget.js` being served was built *before*
+that change. Rebuild and redeploy:
+
+```bash
+cd chat-widget
+npm run build
+# copy dist/widget.js over the one served by the backend (e.g. public/widget.js)
+```
+
+Also double-check `php artisan storage:link` has been run (see item 2
+above) — without it, attachment URLs resolve but 404.
+

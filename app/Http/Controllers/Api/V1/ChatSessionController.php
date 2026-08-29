@@ -31,6 +31,11 @@ class ChatSessionController extends Controller
 
         $query = $site->chatSessions()
             ->with(['assignedAgent', 'messages' => fn ($q) => $q->latest()->limit(1)])
+            // Real unread count (not just "is the single latest message
+            // unread") — used for the sidebar badge and per-row indicator.
+            ->withCount(['messages as unread_count' => function ($q) {
+                $q->where('sender_type', 'visitor')->where('is_read', false);
+            }])
             ->orderByDesc('last_message_at');
 
         if ($status = $request->query('status')) {
@@ -53,13 +58,28 @@ class ChatSessionController extends Controller
     {
         $this->authorize('view', $chat);
 
+        // Opening a conversation is what "reading" it means here — clear
+        // its unread count so the sidebar/list badges reflect reality.
+        $chat->messages()
+            ->where('sender_type', 'visitor')
+            ->where('is_read', false)
+            ->update(['is_read' => true]);
+
         $chat->load(['site', 'assignedAgent', 'messages.sender']);
 
         return response()->json(['data' => new ChatSessionResource($chat)]);
     }
 
-    public function reply(ReplyToChatRequest $request, ChatSession $chat, SendMessage $action): JsonResponse
+    public function reply(ReplyToChatRequest $request, ChatSession $chat, SendMessage $action, ClaimChatSession $claim): JsonResponse
     {
+        // Replying to an unclaimed chat *is* how an agent claims it —
+        // no separate "Claim" click needed. ChatSessionPolicy::reply
+        // already guarantees the chat is either unassigned or already
+        // this agent's, so this is a no-op once it's already claimed.
+        if (! $chat->isAssigned()) {
+            $claim->handle($chat, $request->user());
+        }
+
         $message = $action->handle($chat, 'agent', $request->validated('message'), $request->user());
 
         return response()->json(['data' => new ChatMessageResource($message)], 201);
@@ -70,7 +90,12 @@ class ChatSessionController extends Controller
         ChatSession $chat,
         StoreChatAttachment $store,
         SendMessage $send,
+        ClaimChatSession $claim,
     ): JsonResponse {
+        if (! $chat->isAssigned()) {
+            $claim->handle($chat, $request->user());
+        }
+
         $attachment = $store->handle($chat, $request->file('attachment'));
 
         $message = $send->handle(

@@ -17,13 +17,24 @@ class ChatSessionPolicy
         return $this->hasSiteAccess($user, $session);
     }
 
+    /**
+     * Replying is also how a chat gets auto-claimed (see
+     * ChatSessionController::reply) — so an agent may reply while the
+     * session is still unassigned (that's the claim moment) or once it's
+     * assigned to *them*. An agent can no longer reply to a chat another
+     * agent already owns; use transfer() to hand it over instead.
+     */
     public function reply(User $user, ChatSession $session): bool
     {
         if (! $user->can('chats.reply')) {
             return false;
         }
 
-        return $this->hasSiteAccess($user, $session);
+        if (! $this->hasSiteAccess($user, $session)) {
+            return false;
+        }
+
+        return ! $session->isAssigned() || $session->assigned_agent_id === $user->id || $user->isSuperAdmin();
     }
 
     public function close(User $user, ChatSession $session): bool
@@ -42,7 +53,11 @@ class ChatSessionPolicy
 
     public function transfer(User $user, ChatSession $session): bool
     {
-        return $this->hasSiteAccess($user, $session) && $session->assigned_agent_id === $user->id;
+        if (! $this->hasSiteAccess($user, $session)) {
+            return false;
+        }
+
+        return $session->assigned_agent_id === $user->id || $user->isSuperAdmin();
     }
 
     protected function hasSiteAccess(User $user, ChatSession $session): bool
