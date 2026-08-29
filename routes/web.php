@@ -38,3 +38,25 @@ Route::get('/system/clear-cache', function () {
 
     return response()->json(['cleared' => $ran, 'at' => now()->toDateTimeString()]);
 });
+
+Route::get('/system/storage-link', function () {
+    $link = public_path('storage');
+    $target = storage_path('app/public');
+
+    if (file_exists($link)) {
+        return response()->json([
+            'status' => 'already_linked',
+            'link' => $link,
+            'target' => $target,
+        ]);
+    }
+
+    Artisan::call('storage:link');
+
+    return response()->json([
+        'status' => file_exists($link) ? 'linked' : 'failed',
+        'link' => $link,
+        'target' => $target,
+        'output' => Artisan::output(),
+    ]);
+});
